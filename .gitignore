@@ -1,0 +1,5 @@
+# Exclude environment variables (may contain sensitive data)
+.env
+
+# Exclude all secret password files
+secrets/*.txt
