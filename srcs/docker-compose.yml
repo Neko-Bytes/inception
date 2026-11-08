@@ -1,0 +1,33 @@
+# Source: https://docs.docker.com/reference/compose-file/volumes/#1
+
+services:
+  nginx:
+    build:
+      context: ./requirements/nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    image: nginx
+
+    # Publish only port 443. 
+    ports:
+      - "443:443"
+
+    # Load non-sensitive variables from the .env file.
+    env_file:
+      - .env
+
+    # Restart the container if it crashes.
+    restart: always
+
+    volumes:
+      # Mount the named volume that holds the website files.
+      - wordpress_data:/var/www/html
+
+volumes:
+  wordpress_data:
+    driver: local
+    driver_opts:
+      # These options create a named volume that maps to a host path.
+      type: none
+      o: bind
+      device: ${HOME}/data/wordpress
