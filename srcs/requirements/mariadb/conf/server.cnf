@@ -1,0 +1,4 @@
+[mariadbd]
+
+# Accept connections from WordPress over the Docker network.
+bind-address = 0.0.0.0
