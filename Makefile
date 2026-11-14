@@ -1,21 +1,19 @@
-COMPOSE = docker compose -f srcs/docker-compose.yml
+COMPOSE = docker compose -f srcs/docker-compose.yml --env-file srcs/.env
 
 all: up
 
 up:
-	# Create the host data directory if it does not exist.
-	mkdir -p $(HOME)/data/wordpress
 	$(COMPOSE) up -d --build
 
 down:
 	$(COMPOSE) down
 
-clean:
-	$(COMPOSE) down --rmi all --volumes --remove-orphans
-	rm -rf $(HOME)/data
+restart: down up
 
-fclean: clean
+ps:
+	$(COMPOSE) ps
 
-re: fclean all
+logs:
+	$(COMPOSE) logs --tail=30
 
-.PHONY: all up down clean fclean re
+.PHONY: all up down restart ps logs

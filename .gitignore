@@ -1,5 +1,6 @@
-# Exclude environment variables (may contain sensitive data)
-.env
+# Never commit passwords or other secrets.
+secrets/
 
-# Exclude all secret password files
-secrets/*.txt
+# Local environment configuration
+srcs/.env
+
