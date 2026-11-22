@@ -1,63 +1,46 @@
 #!/bin/sh
-set -eu
+# MariaDB start script (the container's ENTRYPOINT)
+#
+# What it does:
+#   1. reads the passwords that docker gives us from secrets/
+#   2. prepares the folders MariaDB needs
+#   3. first start only: creates MariaDB's own system tables in the volume
+#   4. writes the SQL that creates the WordPress database and user
+#   5. starts MariaDB, which runs that SQL while starting up
+#
+# Sources:
+#   mariadb-install-db: https://mariadb.com/docs/server/clients-and-utilities/deployment-tools/mariadb-install-db
+#   --init-file:        https://mariadb.com/docs/server/server-management/variables-and-modes/server-system-variables#init_file
 
-DATA_DIR=/var/lib/mysql
-SOCKET=/run/mysqld/mysqld.sock
+# stop the script if any command fails
+set -e
 
-# Read passwords from Docker secrets.
+# 1. docker puts our secrets/*.txt files in /run/secrets/ inside the container
 DB_PASS=$(cat /run/secrets/db_password)
 ROOT_PASS=$(cat /run/secrets/db_root_password)
 
-# Prepare MariaDB directories.
-mkdir -p "$DATA_DIR" /run/mysqld
-chown -R mysql:mysql "$DATA_DIR" /run/mysqld
+# 2. /run/mysqld holds the socket file (how local programs talk to MariaDB)
+mkdir -p /run/mysqld
+# MariaDB runs as the "mysql" user, so it must own its folders
+chown -R mysql:mysql /run/mysqld /var/lib/mysql
 
-# Initialize MariaDB system tables only once.
-if [ ! -d "$DATA_DIR/mysql" ]; then
-    mariadb-install-db --user=mysql --datadir="$DATA_DIR"
+# 3. an empty volume has no "mysql" folder yet -> this is the first start
+#    --skip-test-db: no test database and no anonymous (no-name) user
+if [ ! -d /var/lib/mysql/mysql ]; then
+    mariadb-install-db --user=mysql --datadir=/var/lib/mysql --skip-test-db
 fi
 
-# Configure WordPress database if setup was not completed.
-if [ ! -f "$DATA_DIR/.inception-ready" ]; then
-    echo "Configuring MariaDB..."
-
-    # Start a temporary server without network access.
-    mariadbd --user=mysql --skip-networking --socket="$SOCKET" &
-    pid=$!
-
-    # Wait for MariaDB to start.
-    attempts=0
-    until MYSQL_PWD="$ROOT_PASS" mariadb -u root --socket="$SOCKET" \
-        -e "SELECT 1" >/dev/null 2>&1; do
-        attempts=$((attempts + 1))
-
-        if [ "$attempts" -ge 30 ]; then
-            echo "MariaDB failed to start." >&2
-            kill "$pid" 2>/dev/null || true
-            exit 1
-        fi
-
-        sleep 1
-    done
-
-    # Create the WordPress database and user.
-    MYSQL_PWD="$ROOT_PASS" mariadb -u root --socket="$SOCKET" <<SQL
-CREATE DATABASE IF NOT EXISTS \`$MYSQL_DATABASE\`;
+# 4. this SQL runs on every start, so every line must be safe to repeat
+#    (that's why it says IF NOT EXISTS). '%' = can connect from any container.
+cat > /tmp/init.sql << EOF
+CREATE DATABASE IF NOT EXISTS $MYSQL_DATABASE;
 CREATE USER IF NOT EXISTS '$MYSQL_USER'@'%' IDENTIFIED BY '$DB_PASS';
 ALTER USER '$MYSQL_USER'@'%' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'%';
+GRANT ALL PRIVILEGES ON $MYSQL_DATABASE.* TO '$MYSQL_USER'@'%';
 ALTER USER 'root'@'localhost' IDENTIFIED BY '$ROOT_PASS';
-SQL
+FLUSH PRIVILEGES;
+EOF
 
-    # Stop the temporary server.
-    kill -TERM "$pid"
-    wait "$pid"
-
-    # Record that setup completed successfully.
-    touch "$DATA_DIR/.inception-ready"
-
-    echo "MariaDB setup complete."
-fi
-
-# Run MariaDB normally.
-exec mariadbd --user=mysql --socket="$SOCKET"
+# 5. exec = MariaDB replaces this script and becomes PID 1,
+#    so docker can stop it cleanly and restart it if it crashes
+exec mariadbd --user=mysql --init-file=/tmp/init.sql

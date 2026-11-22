@@ -1,4 +1,18 @@
-[mariadbd]
+# MariaDB config (loaded after Debian's default 50-server.cnf)
+#
+# port: 3306 is already MariaDB's default, it's written here so you can see
+# where to change it. If you change it, also change "mariadb:3306" in
+# wordpress/tools/setup.sh.
+#
+# bind-address: Debian's default only listens on 127.0.0.1, meaning only programs inside
+# this same container could connect. WordPress runs in another container,
+# so we listen on all addresses instead.
+# This is still safe: port 3306 is not published in docker-compose.yml,
+# so only containers on our docker network can reach it.
+#
+# Option reference: https://mariadb.com/docs/server/server-management/variables-and-modes/server-system-variables
+# (search the page for "port" and "bind_address")
 
-# Accept connections from WordPress over the Docker network.
+[mysqld]
+port = 3306
 bind-address = 0.0.0.0

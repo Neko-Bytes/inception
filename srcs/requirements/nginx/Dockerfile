@@ -1,27 +1,35 @@
-FROM debian:bookworm-slim
+# nginx image (the only container reachable from outside)
+#
+# What it does:
+#   1. starts from Debian 12 "bookworm" (the penultimate stable Debian)
+#   2. installs nginx and openssl
+#   3. makes a self-signed TLS certificate for our domain
+#   4. adds our config
+#   5. runs nginx in the foreground
+#
+# Sources:
+#   Dockerfile reference: https://docs.docker.com/reference/dockerfile/
+#   openssl req:          https://docs.openssl.org/3.0/man1/openssl-req/
+#   daemon off:           https://nginx.org/en/docs/ngx_core_module.html
 
-# Install NGINX and OpenSSL.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx openssl && \
-    rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm
 
-# Create a self-signed HTTPS certificate.
+RUN apt-get update && apt-get install -y nginx openssl && rm -rf /var/lib/apt/lists/*
+
+# self-signed certificate, valid 1 year
+#   -x509 = make a certificate (not a request), -nodes = no password on the key
+#   -subj = the certificate's name (CN = our domain), so openssl doesn't ask questions
 RUN mkdir -p /etc/nginx/ssl && \
-    openssl req -x509 -nodes -days 365 \
-    -newkey rsa:2048 \
-    -keyout /etc/nginx/ssl/nginx.key \
-    -out /etc/nginx/ssl/nginx.crt \
-    -subj "/CN=kmummadi.42.fr" \
-    -addext "subjectAltName=DNS:kmummadi.42.fr" && \
-    chmod 600 /etc/nginx/ssl/nginx.key
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/nginx/ssl/inception.key \
+        -out /etc/nginx/ssl/inception.crt \
+        -subj "/CN=kmummadi.42.fr"
 
-# Add our NGINX configuration.
-COPY conf/default.conf /etc/nginx/conf.d/default.conf
-
-# Remove the default website configuration.
+# remove Debian's default site (it listens on port 80, we don't want that)
 RUN rm -f /etc/nginx/sites-enabled/default
 
-EXPOSE 443
+# Debian's nginx loads every .conf file in conf.d/
+COPY conf/default.conf /etc/nginx/conf.d/default.conf
 
-# Run NGINX in the foreground.
+# daemon off = stay in the foreground, so nginx is PID 1 and the container keeps running
 CMD ["nginx", "-g", "daemon off;"]
